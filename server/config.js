@@ -17,6 +17,7 @@ export const config = {
   apiAccessToken: process.env.API_ACCESS_TOKEN || '',
   allowedExtensionIds: listOfStrings(process.env.ALLOWED_EXTENSION_IDS),
   allowedWebOrigins: listOfStrings(process.env.ALLOWED_WEB_ORIGINS || 'http://localhost:8787'),
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 8787}`).replace(/\/$/, ''),
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 900000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 30),
   crawlerBrowserChannel: process.env.CRAWLER_BROWSER_CHANNEL || '',

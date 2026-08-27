@@ -26,6 +26,12 @@ app.use(cors({
   }
 }));
 app.use(express.json({ limit: '2mb' }));
+app.get('/preview/config.js', (_req, res) => {
+  res.type('application/javascript').send(`globalThis.APP_CONFIG = Object.freeze(${JSON.stringify({
+    apiBaseUrl: config.publicBaseUrl,
+    apiAccessToken: config.apiAccessToken
+  })});`);
+});
 app.use('/preview', express.static('extension'));
 app.get('/', (_req, res) => res.redirect('/preview/popup.html'));
 
