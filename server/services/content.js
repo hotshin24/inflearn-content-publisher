@@ -37,6 +37,17 @@ const metaDescriptionSchema = {
   required: ['meta_description']
 };
 
+const articleLengthSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    introduction: { type: 'string' },
+    sections: schema.properties.sections,
+    conclusion: { type: 'string' }
+  },
+  required: ['introduction', 'sections', 'conclusion']
+};
+
 const compactLength = (value) => String(value || '').replace(/\s/g, '').length;
 const countOccurrences = (text, keyword) => keyword ? String(text).split(keyword).length - 1 : 0;
 const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -112,6 +123,43 @@ async function repairMetaDescription(client, course, mainKeyword, current) {
   return candidate;
 }
 
+async function repairArticleLengths(client, course, mainKeyword, data) {
+  let candidate = data;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const bodyLength = candidate.sections.reduce((sum, section) => sum + compactLength(section.content), 0);
+    const lengths = {
+      introduction: compactLength(candidate.introduction),
+      body: bodyLength,
+      conclusion: compactLength(candidate.conclusion)
+    };
+    if (lengths.introduction >= 450 && lengths.introduction <= 550
+      && lengths.body >= 1800 && lengths.body <= 2200
+      && lengths.conclusion >= 450 && lengths.conclusion <= 550) return candidate;
+    console.warn('[content:length-audit]', { attempt, ...lengths });
+    const response = await client.responses.create({
+      model: config.openaiModel,
+      instructions: [
+        '온라인 강의 소개 글의 분량만 교정합니다.',
+        '제공된 원문 강의 데이터에서 확인되지 않는 사실을 추가하지 마세요.',
+        '기존 H2 제목과 의미, 메인 키워드의 자연스러운 배치를 유지하세요.',
+        '공백 제외 기준으로 서론 480~520자, 본론 content 합계 1,900~2,100자, 결론 480~520자로 작성하세요.'
+      ].join('\n'),
+      input: [
+        `메인 키워드: ${mainKeyword}`,
+        `현재 길이: ${JSON.stringify(lengths)}`,
+        `교정할 글: ${JSON.stringify({ introduction: candidate.introduction, sections: candidate.sections, conclusion: candidate.conclusion })}`,
+        `검증 가능한 강의 데이터: ${JSON.stringify({ title: course.title, description: course.description, curriculum: course.curriculum, reviews: course.reviews.slice(0, 20) })}`
+      ].join('\n\n'),
+      text: { format: { type: 'json_schema', name: 'article_length_repair', strict: true, schema: articleLengthSchema }, verbosity: 'high' },
+      store: false
+    });
+    if (!response.output_text) break;
+    const repaired = JSON.parse(response.output_text);
+    candidate = normalizeInvariants({ ...candidate, ...repaired }, mainKeyword);
+  }
+  return candidate;
+}
+
 export async function generateContent(course, mainKeyword, customPrompt = '') {
   const missing = missingConfig(['openaiApiKey']);
   if (missing.length) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
@@ -131,8 +179,9 @@ export async function generateContent(course, mainKeyword, customPrompt = '') {
       store: false
     });
     if (!response.output_text) throw new Error('OpenAI가 콘텐츠를 반환하지 않았습니다.');
-    const data = normalizeInvariants(JSON.parse(response.output_text), mainKeyword);
+    let data = normalizeInvariants(JSON.parse(response.output_text), mainKeyword);
     data.meta_description = await repairMetaDescription(client, compactCourse, mainKeyword, data.meta_description);
+    data = await repairArticleLengths(client, compactCourse, mainKeyword, data);
     const errors = auditGeneratedContent(data, mainKeyword);
     if (!errors.length) {
       return {
@@ -146,7 +195,7 @@ export async function generateContent(course, mainKeyword, customPrompt = '') {
     console.warn('[content:audit-failed]', { attempt, errors });
     auditFeedback = `이전 결과가 다음 검증에 실패했습니다. 모든 항목을 수정해 전체 결과를 다시 작성하세요:\n- ${errors.join('\n- ')}`;
   }
-  const error = new Error(`SEO 및 분량 검증 실패: ${lastErrors.join(' / ')}`);
+  const error = new Error('SEO 및 분량 검증 실패');
   error.code = 'CONTENT_AUDIT_FAILED';
   error.auditErrors = lastErrors;
   throw error;
