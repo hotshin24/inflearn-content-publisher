@@ -43,15 +43,56 @@ function extractCurriculum() {
   return sections;
 }
 
-function extractReviews() {
+function extractVisibleReviews() {
   const area = sectionByHeading(/^수강평$/) || document;
-  const candidates = [...area.querySelectorAll('article, li, [class*="review"], [data-testid*="review"]')];
-  return candidates.map((node) => clean(node.innerText)).filter((text) => text.length >= 80 && text.length <= 5000)
-    .filter((text, index, list) => list.findIndex((item) => item === text) === index)
-    .slice(0, 50).map((content) => ({ content }));
+  const markerNodes = [...area.querySelectorAll('*')].filter((node) => /\d+%\s*수강 후 작성/.test(clean(node.textContent)));
+  const markerCards = markerNodes.map((marker) => {
+    let card = marker;
+    while (card.parentElement && clean(card.innerText).length < 80) card = card.parentElement;
+    while (card.parentElement) {
+      const parentText = clean(card.parentElement.innerText);
+      const markerCount = (parentText.match(/\d+%\s*수강 후 작성/g) || []).length;
+      if (parentText.length > 5000 || markerCount > 1) break;
+      card = card.parentElement;
+    }
+    return card;
+  });
+  const selectorCards = [...area.querySelectorAll('article, [data-testid*="review"], [class*="review-card"], [class*="ReviewCard"]')];
+  return unique([...markerCards, ...selectorCards].map((node) => clean(node.innerText)))
+    .filter((text) => text.length >= 80 && text.length <= 5000)
+    .map((content) => ({ content }));
 }
 
-function extractCourse() {
+function findNextReviewControl() {
+  const area = sectionByHeading(/^수강평$/) || document;
+  const controls = [...area.querySelectorAll('button, a')].filter((node) => !node.disabled && node.getAttribute('aria-disabled') !== 'true');
+  const more = controls.find((node) => /^(수강평\s*)?더보기$/.test(clean(node.textContent)));
+  if (more) return more;
+  const next = controls.find((node) => /^(다음|next)$/i.test(clean(node.textContent)) || /(다음|next)/i.test(node.getAttribute('aria-label') || '') || /(다음|next)/i.test(node.getAttribute('title') || ''));
+  if (next) return next;
+  const current = controls.find((node) => node.getAttribute('aria-current') === 'page' || /active|selected/i.test(node.className || ''));
+  const currentPage = Number(clean(current?.textContent));
+  if (Number.isInteger(currentPage)) return controls.find((node) => Number(clean(node.textContent)) === currentPage + 1) || null;
+  return null;
+}
+
+async function collectReviews(limit = 50) {
+  const collected = new Map();
+  for (let page = 0; page < 10 && collected.size < limit; page += 1) {
+    const visible = extractVisibleReviews();
+    visible.forEach((review) => collected.set(review.content, review));
+    const next = findNextReviewControl();
+    if (!next || collected.size >= limit) break;
+    const before = visible.map((review) => review.content).join('|');
+    next.click();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const after = extractVisibleReviews().map((review) => review.content).join('|');
+    if (after === before && !/더보기/.test(clean(next.textContent))) break;
+  }
+  return [...collected.values()].slice(0, limit);
+}
+
+function extractCourse(reviews = extractVisibleReviews()) {
   const raw = pageText();
   const jsonLd = [...document.querySelectorAll('script[type="application/ld+json"]')]
     .map((node) => { try { return JSON.parse(node.textContent); } catch { return null; } })
@@ -64,7 +105,7 @@ function extractCourse() {
     rating: raw.match(/\b[0-5]\.\d\b/)?.[0] || '',
     studentCount: raw.match(/수강생\s*[\d,]+명/)?.[0] || '',
     curriculum: extractCurriculum(),
-    reviews: extractReviews(),
+    reviews,
     collectedAt: new Date().toISOString()
   };
 }
@@ -83,7 +124,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     try {
       const expanded = await expandCurriculum();
-      const course = extractCourse();
+      const reviews = await collectReviews(50);
+      const course = extractCourse(reviews);
       console.info('[Inflearn Publisher] extraction complete', {
         expanded,
         title: course.title,

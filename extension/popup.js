@@ -7,9 +7,35 @@ const setStatus = (text, isError = false) => {
   document.querySelector('.status-icon').style.color = isError ? '#ff8d86' : '#b8ed73';
 };
 
-async function activeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab;
+function isInflearnCourseUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'www.inflearn.com' && url.pathname.startsWith('/course/');
+  } catch {
+    return false;
+  }
+}
+
+function waitForTabComplete(tabId, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error('인프런 페이지 로딩 시간이 초과됐습니다.'));
+    }, timeoutMs);
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+      clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.get(tabId).then((tab) => {
+      if (tab.status !== 'complete') return;
+      clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }).catch(reject);
+  });
 }
 
 async function requestCourse(tabId) {
@@ -37,10 +63,15 @@ async function api(path, options = {}) {
 }
 
 $('collect').addEventListener('click', async () => {
+  let crawlerTabId = null;
   try {
-    setStatus('페이지에서 공개 정보를 수집하는 중…');
-    const tab = await activeTab();
-    if (!tab.url?.startsWith('https://www.inflearn.com/course/')) throw new Error('인프런 강의 페이지를 열어주세요.');
+    const courseUrl = $('courseUrl').value.trim();
+    if (!isInflearnCourseUrl(courseUrl)) throw new Error('올바른 인프런 강의 URL을 입력하세요.');
+    setStatus('인프런 페이지를 백그라운드에서 여는 중…');
+    const tab = await chrome.tabs.create({ url: courseUrl, active: false });
+    crawlerTabId = tab.id;
+    if (tab.status !== 'complete') await waitForTabComplete(tab.id);
+    setStatus('커리큘럼과 수강평을 수집하는 중…');
     const result = await requestCourse(tab.id);
     if (!result?.ok) throw new Error(result?.error || '수집에 실패했습니다. 페이지를 새로고침해 보세요.');
     course = result.course;
@@ -48,6 +79,7 @@ $('collect').addEventListener('click', async () => {
     $('generate').disabled = false;
     setStatus(`수집 완료: 커리큘럼 ${course.curriculum.length}개 섹션, 수강평 ${course.reviews.length}개${result.diagnostics?.expanded ? ' · 커리큘럼 펼침' : ''}`);
   } catch (error) { setStatus(error.message, true); }
+  finally { if (crawlerTabId) chrome.tabs.remove(crawlerTabId).catch(() => {}); }
 });
 
 $('generate').addEventListener('click', async () => {

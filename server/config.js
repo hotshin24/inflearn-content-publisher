@@ -31,7 +31,7 @@ export const config = {
   wordpressCoreKeywordsField: process.env.WORDPRESS_CORE_KEYWORDS_FIELD || '',
   wordpressRelatedKeywordsField: process.env.WORDPRESS_RELATED_KEYWORDS_FIELD || '',
   promptFile: path.resolve(process.cwd(), process.env.PROMPT_FILE || 'prompts/default.md'),
-  maxReviews: Math.max(1, Number(process.env.MAX_REVIEWS || 30)),
+  maxReviews: Math.max(1, Number(process.env.MAX_REVIEWS || 50)),
 };
 
 export function missingConfig(keys) {
