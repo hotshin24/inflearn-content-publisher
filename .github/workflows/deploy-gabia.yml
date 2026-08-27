@@ -1,0 +1,41 @@
+name: Deploy to Gabia Cloud
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: gabia-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Build deployment archive
+        run: tar --exclude=.git --exclude=.github --exclude=.env --exclude=node_modules --exclude=data/*.json -czf /tmp/inflearn-publisher.tar.gz .
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.GABIA_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEY: ${{ secrets.GABIA_SSH_HOST_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+      - name: Upload and restart
+        env:
+          DEPLOY_HOST: ${{ secrets.GABIA_HOST }}
+          DEPLOY_USER: ${{ secrets.GABIA_USER }}
+        run: |
+          scp /tmp/inflearn-publisher.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:/tmp/inflearn-publisher.tar.gz"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'sudo /opt/inflearn-publisher/deploy/server-update.sh'

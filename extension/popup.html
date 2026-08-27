@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="popup.css"><title>콘텐츠 발행</title></head>
+<body>
+  <main>
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">C</div>
+      <div>
+        <p class="eyebrow">CONTENT AUTOMATION</p>
+        <h1>Inflearn Publisher</h1>
+      </div>
+      <span class="live-dot" title="Local workflow"></span>
+    </header>
+
+    <section class="panel setup-panel">
+      <div class="section-heading">
+        <span class="step">01</span>
+        <div><h2>Source</h2><p>강의 정보를 불러옵니다.</p></div>
+      </div>
+      <button id="collect" class="button secondary"><span>페이지 정보 수집</span><span aria-hidden="true">↗</span></button>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <span class="step">02</span>
+        <div><h2>Generate</h2><p>AI로 게시물 초안을 만듭니다.</p></div>
+      </div>
+      <label class="field"><span>메인 키워드 <em>필수</em></span><input id="mainKeyword" placeholder="예: 클로드 코드 강의"></label>
+      <label class="field"><span>추가 지침 <em>선택</em></span><textarea id="prompt" rows="3" placeholder="이번 글의 관점이나 문체를 입력하세요."></textarea></label>
+      <button id="generate" class="button secondary" disabled><span>초안 생성</span><span aria-hidden="true">⌘↵</span></button>
+    </section>
+
+    <section class="panel editor-panel">
+      <div class="section-heading">
+        <span class="step">03</span>
+        <div><h2>Publish</h2><p>검토 후 WordPress에 전송합니다.</p></div>
+      </div>
+      <label class="field"><span>제목</span><input id="title" placeholder="생성된 제목이 여기에 표시됩니다."></label>
+      <label class="field"><span>본문 HTML</span><textarea id="content" rows="7" placeholder="생성된 본문이 여기에 표시됩니다."></textarea></label>
+      <div class="seo-preview">
+        <p><span>Focus keyphrase</span><strong id="focusKeyphrase">—</strong></p>
+        <p><span>Meta description</span><strong id="metaDescription">—</strong></p>
+        <p><span>WordPress tags</span><strong id="wordpressTags">—</strong></p>
+      </div>
+      <div class="publish-row">
+        <label class="field status-field"><span>상태</span><select id="status"><option value="draft">임시글</option><option value="pending">검토 대기</option><option value="publish" selected>즉시 공개</option></select></label>
+        <button id="publish" class="button primary" disabled><span>WordPress 발행</span><span aria-hidden="true">→</span></button>
+      </div>
+    </section>
+
+    <div class="status-bar">
+      <span class="status-icon" aria-hidden="true">●</span>
+      <p id="statusText" role="status">인프런 강의 페이지에서 시작하세요.</p>
+    </div>
+  </main>
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

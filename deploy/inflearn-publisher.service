@@ -1,0 +1,23 @@
+[Unit]
+Description=Inflearn Content Publisher API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=inflearn-publisher
+Group=inflearn-publisher
+WorkingDirectory=/opt/inflearn-publisher
+EnvironmentFile=/etc/inflearn-publisher.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/inflearn-publisher/data
+
+[Install]
+WantedBy=multi-user.target
