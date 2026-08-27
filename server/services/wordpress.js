@@ -30,8 +30,24 @@ async function resolveTagIds(names = []) {
   return ids;
 }
 
+async function resolveDefaultCategoryIds() {
+  if (config.wordpressDefaultCategoryIds.length) return config.wordpressDefaultCategoryIds;
+
+  const name = config.wordpressDefaultCategoryName.trim();
+  if (!name) return [];
+
+  const found = await wpRequest(`/categories?search=${encodeURIComponent(name)}&per_page=100`);
+  const exact = found.find((category) => category.name.toLowerCase() === name.toLowerCase());
+  const category = exact || await wpRequest('/categories', {
+    method: 'POST',
+    body: JSON.stringify({ name })
+  });
+  return [category.id];
+}
+
 export async function publishPost(post) {
   const tags = await resolveTagIds(post.tags);
+  const categories = post.categoryIds?.length ? post.categoryIds : await resolveDefaultCategoryIds();
   const seoMeta = {};
   if (config.wordpressMetaDescriptionField && post.meta_description) seoMeta[config.wordpressMetaDescriptionField] = post.meta_description;
   if (config.wordpressFocusKeyphraseField && post.focus_keyphrase) seoMeta[config.wordpressFocusKeyphraseField] = post.focus_keyphrase;
@@ -45,7 +61,7 @@ export async function publishPost(post) {
       excerpt: post.excerpt || '',
       slug: post.slug || undefined,
       status: post.status || config.wordpressDefaultStatus,
-      categories: post.categoryIds?.length ? post.categoryIds : config.wordpressDefaultCategoryIds,
+      categories,
       tags,
       meta: { ...(post.meta || {}), ...seoMeta }
     })

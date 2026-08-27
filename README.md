@@ -30,6 +30,7 @@ npm run dev
 - `WORDPRESS_APP_PASSWORD`: 사용자 프로필에서 만든 애플리케이션 비밀번호
 - `WORDPRESS_DEFAULT_STATUS`: 안전한 기본값 `draft`
 - `WORDPRESS_DEFAULT_CATEGORY_IDS`: 쉼표로 구분한 카테고리 ID(선택)
+- `WORDPRESS_DEFAULT_CATEGORY_NAME`: ID가 없을 때 연결할 카테고리명(기본값: `인강 리뷰`)
 
 연결 확인:
 

@@ -29,6 +29,7 @@ export const config = {
   wordpressAppPassword: process.env.WORDPRESS_APP_PASSWORD || '',
   wordpressDefaultStatus: process.env.WORDPRESS_DEFAULT_STATUS || 'draft',
   wordpressDefaultCategoryIds: listOfNumbers(process.env.WORDPRESS_DEFAULT_CATEGORY_IDS),
+  wordpressDefaultCategoryName: process.env.WORDPRESS_DEFAULT_CATEGORY_NAME || '인강 리뷰',
   wordpressMetaDescriptionField: process.env.WORDPRESS_META_DESCRIPTION_FIELD || '',
   wordpressFocusKeyphraseField: process.env.WORDPRESS_FOCUS_KEYPHRASE_FIELD || '',
   wordpressCoreKeywordsField: process.env.WORDPRESS_CORE_KEYWORDS_FIELD || '',
