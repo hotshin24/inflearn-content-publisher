@@ -33,6 +33,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/api', rateLimit({
   windowMs: config.rateLimitWindowMs,
   limit: config.rateLimitMax,
+  skip: () => config.nodeEnv !== 'production',
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { error: '요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.' }
