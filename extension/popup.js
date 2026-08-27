@@ -67,17 +67,24 @@ $('collect').addEventListener('click', async () => {
   try {
     const courseUrl = $('courseUrl').value.trim();
     if (!isInflearnCourseUrl(courseUrl)) throw new Error('올바른 인프런 강의 URL을 입력하세요.');
-    setStatus('인프런 페이지를 백그라운드에서 여는 중…');
-    const tab = await chrome.tabs.create({ url: courseUrl, active: false });
-    crawlerTabId = tab.id;
-    if (tab.status !== 'complete') await waitForTabComplete(tab.id);
-    setStatus('커리큘럼과 수강평을 수집하는 중…');
-    const result = await requestCourse(tab.id);
+    let result;
+    if (globalThis.chrome?.tabs?.create && location.protocol === 'chrome-extension:') {
+      setStatus('인프런 페이지를 백그라운드에서 여는 중…');
+      const tab = await chrome.tabs.create({ url: courseUrl, active: false });
+      crawlerTabId = tab.id;
+      if (tab.status !== 'complete') await waitForTabComplete(tab.id);
+      setStatus('커리큘럼과 수강평을 수집하는 중…');
+      result = await requestCourse(tab.id);
+    } else {
+      setStatus('서버가 인프런 페이지를 열어 수집하는 중…');
+      const response = await api('/api/crawl', { method: 'POST', body: JSON.stringify({ url: courseUrl }) });
+      result = { ok: true, course: response.course, diagnostics: { serverCrawler: true } };
+    }
     if (!result?.ok) throw new Error(result?.error || '수집에 실패했습니다. 페이지를 새로고침해 보세요.');
     course = result.course;
     if (!course.title) throw new Error('강의 제목을 찾지 못했습니다. 인프런 강의 상세 페이지인지 확인하세요.');
     $('generate').disabled = false;
-    setStatus(`수집 완료: 커리큘럼 ${course.curriculum.length}개 섹션, 수강평 ${course.reviews.length}개${result.diagnostics?.expanded ? ' · 커리큘럼 펼침' : ''}`);
+    setStatus(`수집 완료: 커리큘럼 ${course.curriculum.length}개 섹션, 수강평 ${course.reviews.length}개${result.diagnostics?.serverCrawler ? ' · 서버 크롤링' : result.diagnostics?.expanded ? ' · 커리큘럼 펼침' : ''}`);
   } catch (error) { setStatus(error.message, true); }
   finally { if (crawlerTabId) chrome.tabs.remove(crawlerTabId).catch(() => {}); }
 });

@@ -17,6 +17,13 @@ sudo useradd --system --home /opt/inflearn-publisher --shell /usr/sbin/nologin i
 sudo install -d -o inflearn-publisher -g inflearn-publisher /opt/inflearn-publisher/data
 ```
 
+프로젝트 업로드 후 서버 크롤러용 Chromium과 운영체제 의존성을 설치합니다.
+
+```bash
+cd /opt/inflearn-publisher
+sudo npx playwright install --with-deps chromium
+```
+
 프로젝트를 `/opt/inflearn-publisher`에 처음 업로드하고 `.env.example`을 참고해 `/etc/inflearn-publisher.env`를 만듭니다.
 
 ```bash
@@ -34,6 +41,8 @@ TRUST_PROXY=1
 API_ACCESS_TOKEN=<충분히 긴 무작위 토큰>
 ALLOWED_EXTENSION_IDS=<Chrome 확장프로그램 ID>
 ALLOWED_WEB_ORIGINS=https://api.example.com
+CRAWLER_BROWSER_CHANNEL=
+CRAWLER_TIMEOUT_MS=45000
 ```
 
 systemd 서비스를 설치합니다.

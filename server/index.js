@@ -5,6 +5,7 @@ import { rateLimit } from 'express-rate-limit';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import { generateContent } from './services/content.js';
+import { crawlInflearnCourse } from './services/inflearn.js';
 import { publishPost, verifyWordPress } from './services/wordpress.js';
 import { validateCourse, validatePost } from './validation.js';
 
@@ -49,6 +50,9 @@ app.use('/api', (req, res, next) => {
 app.get('/api/wordpress/verify', async (_req, res, next) => {
   try { res.json(await verifyWordPress()); } catch (error) { next(error); }
 });
+app.post('/api/crawl', async (req, res, next) => {
+  try { res.json({ course: await crawlInflearnCourse(req.body.url) }); } catch (error) { next(error); }
+});
 app.post('/api/generate', async (req, res, next) => {
   try { res.json(await generateContent(validateCourse(req.body.course), req.body.mainKeyword, req.body.prompt)); } catch (error) { next(error); }
 });
@@ -65,7 +69,7 @@ app.post('/api/generate-and-publish', async (req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  res.status(400).json({
+  res.status(error.status || 400).json({
     error: error.message || '요청 처리 중 오류가 발생했습니다.',
     code: error.code,
     auditErrors: error.auditErrors

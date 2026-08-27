@@ -19,6 +19,8 @@ export const config = {
   allowedWebOrigins: listOfStrings(process.env.ALLOWED_WEB_ORIGINS || 'http://localhost:8787'),
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 900000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 30),
+  crawlerBrowserChannel: process.env.CRAWLER_BROWSER_CHANNEL || '',
+  crawlerTimeoutMs: Number(process.env.CRAWLER_TIMEOUT_MS || 45000),
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
   wordpressUrl: (process.env.WORDPRESS_URL || '').replace(/\/$/, ''),
