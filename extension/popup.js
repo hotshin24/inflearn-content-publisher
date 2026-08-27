@@ -3,8 +3,7 @@ let generated = null;
 const $ = (id) => document.getElementById(id);
 const setStatus = (text, isError = false) => {
   $('statusText').textContent = text;
-  $('statusText').style.color = isError ? '#ff8d86' : '#8e9188';
-  document.querySelector('.status-icon').style.color = isError ? '#ff8d86' : '#b8ed73';
+  document.querySelector('.status-bar').classList.toggle('is-error', isError);
 };
 
 function isInflearnCourseUrl(value) {
