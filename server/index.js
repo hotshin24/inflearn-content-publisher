@@ -65,7 +65,11 @@ app.post('/api/generate-and-publish', async (req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  res.status(400).json({ error: error.message || '요청 처리 중 오류가 발생했습니다.' });
+  res.status(400).json({
+    error: error.message || '요청 처리 중 오류가 발생했습니다.',
+    code: error.code,
+    auditErrors: error.auditErrors
+  });
 });
 
 const server = app.listen(config.port, config.host, () => console.log(`API server: http://${config.host}:${config.port}`));

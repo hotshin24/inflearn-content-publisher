@@ -30,6 +30,13 @@ const schema = {
   required: ['title', 'main_keyword', 'focus_keyphrase', 'meta_description', 'introduction', 'sections', 'conclusion', 'core_keywords', 'related_keywords', 'wordpress_tags']
 };
 
+const metaDescriptionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { meta_description: { type: 'string' } },
+  required: ['meta_description']
+};
+
 const compactLength = (value) => String(value || '').replace(/\s/g, '').length;
 const countOccurrences = (text, keyword) => keyword ? String(text).split(keyword).length - 1 : 0;
 const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -67,6 +74,44 @@ export function renderWordPressContent(data, courseUrl) {
   return `${paragraphs(data.introduction)}\n${sections}\n<h2>결론</h2>\n${paragraphs(data.conclusion)}\n<p><a href="${escapeHtml(courseUrl)}" rel="sponsored nofollow">강의 페이지에서 자세한 커리큘럼 확인하기</a></p>`;
 }
 
+function normalizeInvariants(data, mainKeyword) {
+  data.main_keyword = mainKeyword;
+  data.focus_keyphrase = mainKeyword;
+  data.wordpress_tags = data.wordpress_tags.map((tag) => String(tag).replace(/#/g, '').trim());
+  if (!data.wordpress_tags.includes(mainKeyword)) data.wordpress_tags[0] = mainKeyword;
+  if (!data.title.includes(mainKeyword)) data.title = `${mainKeyword}: ${data.title}`;
+  if (!data.introduction.includes(mainKeyword)) data.introduction = `${mainKeyword}를 살펴보는 학습자라면 다음 내용을 먼저 확인할 필요가 있습니다. ${data.introduction}`;
+  if (!data.sections.some((section) => section.heading.includes(mainKeyword))) data.sections[0].heading = `${mainKeyword}, 무엇을 배우는가`;
+  if (!data.conclusion.includes(mainKeyword)) data.conclusion = `${mainKeyword}를 선택하기 전 자신의 학습 목적과 전체 커리큘럼을 함께 확인해 보세요. ${data.conclusion}`;
+  const article = `${data.title}\n${data.introduction}\n${data.sections.map((section) => `${section.heading}\n${section.content}`).join('\n')}\n${data.conclusion}`;
+  if (countOccurrences(article, mainKeyword) < 5) data.sections[0].content = `${mainKeyword}의 구체적인 학습 범위는 원문 커리큘럼을 기준으로 확인해야 합니다. ${data.sections[0].content}`;
+  return data;
+}
+
+async function repairMetaDescription(client, course, mainKeyword, current) {
+  let candidate = current;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const length = compactLength(candidate);
+    if (length === 110 && candidate.includes(mainKeyword)) return candidate;
+    console.warn('[content:meta-audit]', { attempt, length, hasKeyword: candidate.includes(mainKeyword) });
+    const response = await client.responses.create({
+      model: config.openaiModel,
+      instructions: '원문에 근거한 자연스러운 한국어 SEO 메타 설명 한 문장만 교정합니다. 새로운 사실, 이모지, 해시태그를 추가하지 마세요.',
+      input: [
+        `메인 키워드: ${mainKeyword}`,
+        `현재 문장(공백 제외 ${length}자): ${candidate}`,
+        '메인 키워드를 정확히 포함하고, JavaScript에서 모든 공백을 제거했을 때 정확히 110자가 되도록 다시 작성하세요.',
+        `검증 가능한 강의 요약: ${JSON.stringify({ title: course.title, description: course.description, curriculum: course.curriculum.slice(0, 30) })}`
+      ].join('\n'),
+      text: { format: { type: 'json_schema', name: 'meta_description_repair', strict: true, schema: metaDescriptionSchema }, verbosity: 'low' },
+      store: false
+    });
+    if (!response.output_text) break;
+    candidate = JSON.parse(response.output_text).meta_description;
+  }
+  return candidate;
+}
+
 export async function generateContent(course, mainKeyword, customPrompt = '') {
   const missing = missingConfig(['openaiApiKey']);
   if (missing.length) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
@@ -76,7 +121,8 @@ export async function generateContent(course, mainKeyword, customPrompt = '') {
   const client = new OpenAI({ apiKey: config.openaiApiKey });
   const compactCourse = { ...course, reviews: course.reviews.slice(0, config.maxReviews) };
   let auditFeedback = '';
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  let lastErrors = [];
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
     const response = await client.responses.create({
       model: config.openaiModel,
       instructions: [basePrompt, customPrompt].filter(Boolean).join('\n\n추가 요구사항:\n'),
@@ -85,7 +131,8 @@ export async function generateContent(course, mainKeyword, customPrompt = '') {
       store: false
     });
     if (!response.output_text) throw new Error('OpenAI가 콘텐츠를 반환하지 않았습니다.');
-    const data = JSON.parse(response.output_text);
+    const data = normalizeInvariants(JSON.parse(response.output_text), mainKeyword);
+    data.meta_description = await repairMetaDescription(client, compactCourse, mainKeyword, data.meta_description);
     const errors = auditGeneratedContent(data, mainKeyword);
     if (!errors.length) {
       return {
@@ -95,7 +142,12 @@ export async function generateContent(course, mainKeyword, customPrompt = '') {
         tags: data.wordpress_tags
       };
     }
+    lastErrors = errors;
+    console.warn('[content:audit-failed]', { attempt, errors });
     auditFeedback = `이전 결과가 다음 검증에 실패했습니다. 모든 항목을 수정해 전체 결과를 다시 작성하세요:\n- ${errors.join('\n- ')}`;
   }
-  throw new Error('생성 결과가 3회 시도 후에도 SEO 및 분량 검증을 통과하지 못했습니다.');
+  const error = new Error(`SEO 및 분량 검증 실패: ${lastErrors.join(' / ')}`);
+  error.code = 'CONTENT_AUDIT_FAILED';
+  error.auditErrors = lastErrors;
+  throw error;
 }

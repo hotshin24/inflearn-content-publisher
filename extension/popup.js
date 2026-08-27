@@ -29,7 +29,10 @@ async function api(path, options = {}) {
   if (APP_CONFIG.apiAccessToken) headers.Authorization = `Bearer ${APP_CONFIG.apiAccessToken}`;
   const response = await fetch(`${base}${path}`, { ...options, headers });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `API 오류 (${response.status})`);
+  if (!response.ok) {
+    const details = body.auditErrors?.length ? `\n• ${body.auditErrors.join('\n• ')}` : '';
+    throw new Error(`${body.error || `API 오류 (${response.status})`}${details}`);
+  }
   return body;
 }
 
