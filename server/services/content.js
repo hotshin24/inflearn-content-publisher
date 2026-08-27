@@ -13,8 +13,8 @@ const schema = {
     introduction: { type: 'string' },
     sections: {
       type: 'array',
-      minItems: 3,
-      maxItems: 4,
+      minItems: 4,
+      maxItems: 5,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -49,6 +49,7 @@ const articleLengthSchema = {
 };
 
 const compactLength = (value) => String(value || '').replace(/\s/g, '').length;
+const isReviewSection = (section) => /(수강평|리뷰|후기)/.test(String(section?.heading || ''));
 const countOccurrences = (text, keyword) => keyword ? String(text).split(keyword).length - 1 : 0;
 const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const paragraphs = (value) => String(value || '').split(/\n{2,}/).map((part) => `<p>${escapeHtml(part).replace(/\n/g, '<br>')}</p>`).join('\n');
@@ -74,8 +75,11 @@ export function auditGeneratedContent(data, mainKeyword) {
   if (data.core_keywords?.length !== 5) errors.push('핵심 키워드가 정확히 5개가 아닙니다.');
   if (data.related_keywords?.length !== 10) errors.push('연관 키워드가 정확히 10개가 아닙니다.');
   if (compactLength(data.introduction) < 450 || compactLength(data.introduction) > 550) errors.push('서론이 공백 제외 450~550자가 아닙니다.');
-  const bodyLength = data.sections?.reduce((sum, section) => sum + compactLength(section.content), 0) || 0;
+  const reviewSections = data.sections?.filter(isReviewSection) || [];
+  const bodyLength = data.sections?.filter((section) => !isReviewSection(section)).reduce((sum, section) => sum + compactLength(section.content), 0) || 0;
   if (bodyLength < 1800 || bodyLength > 2200) errors.push('본론이 공백 제외 1,800~2,200자가 아닙니다.');
+  if (reviewSections.length !== 1) errors.push('수강평을 다루는 H2 챕터가 정확히 1개가 아닙니다.');
+  else if (compactLength(reviewSections[0].content) < 450 || compactLength(reviewSections[0].content) > 550) errors.push('수강평 챕터가 공백 제외 450~550자가 아닙니다.');
   if (compactLength(data.conclusion) < 450 || compactLength(data.conclusion) > 550) errors.push('결론이 공백 제외 450~550자가 아닙니다.');
   return errors;
 }
@@ -126,14 +130,17 @@ async function repairMetaDescription(client, course, mainKeyword, current) {
 async function repairArticleLengths(client, course, mainKeyword, data) {
   let candidate = data;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const bodyLength = candidate.sections.reduce((sum, section) => sum + compactLength(section.content), 0);
+    const reviewSection = candidate.sections.find(isReviewSection);
+    const bodyLength = candidate.sections.filter((section) => !isReviewSection(section)).reduce((sum, section) => sum + compactLength(section.content), 0);
     const lengths = {
       introduction: compactLength(candidate.introduction),
       body: bodyLength,
+      review: compactLength(reviewSection?.content),
       conclusion: compactLength(candidate.conclusion)
     };
     if (lengths.introduction >= 450 && lengths.introduction <= 550
       && lengths.body >= 1800 && lengths.body <= 2200
+      && reviewSection && lengths.review >= 450 && lengths.review <= 550
       && lengths.conclusion >= 450 && lengths.conclusion <= 550) return candidate;
     console.warn('[content:length-audit]', { attempt, ...lengths });
     const response = await client.responses.create({
@@ -142,7 +149,8 @@ async function repairArticleLengths(client, course, mainKeyword, data) {
         '온라인 강의 소개 글의 분량만 교정합니다.',
         '제공된 원문 강의 데이터에서 확인되지 않는 사실을 추가하지 마세요.',
         '기존 H2 제목과 의미, 메인 키워드의 자연스러운 배치를 유지하세요.',
-        '공백 제외 기준으로 서론 480~520자, 본론 content 합계 1,900~2,100자, 결론 480~520자로 작성하세요.'
+        '수강평·리뷰·후기 중 하나가 제목에 들어간 H2 챕터를 정확히 하나 유지하고, 제공된 실제 수강평의 공통 반응과 서로 다른 관점을 요약하세요.',
+        '공백 제외 기준으로 서론 480~520자, 수강평 챕터를 제외한 본론 content 합계 1,900~2,100자, 수강평 챕터 480~520자, 결론 480~520자로 작성하세요.'
       ].join('\n'),
       input: [
         `메인 키워드: ${mainKeyword}`,
@@ -168,12 +176,19 @@ export async function generateContent(course, mainKeyword, customPrompt = '') {
   const basePrompt = await fs.readFile(config.promptFile, 'utf8');
   const client = new OpenAI({ apiKey: config.openaiApiKey });
   const compactCourse = { ...course, reviews: course.reviews.slice(0, config.maxReviews) };
+  const reviewRequirement = [
+    '필수 추가 구조: H2 수강평 챕터를 정확히 1개 작성하세요.',
+    '제목에는 “수강평”, “리뷰”, “후기” 중 하나를 포함하세요.',
+    '내용은 공백 제외 450~550자(목표 500자)이며 제공된 실제 수강평만 근거로 공통 반응과 서로 다른 의견을 요약하세요.',
+    '수강평에 없는 사실을 만들거나 개별 작성자의 표현을 과장하지 마세요.',
+    '이 챕터는 기존 본론 공백 제외 1,800~2,200자와 별도입니다.'
+  ].join('\n');
   let auditFeedback = '';
   let lastErrors = [];
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const response = await client.responses.create({
       model: config.openaiModel,
-      instructions: [basePrompt, customPrompt].filter(Boolean).join('\n\n추가 요구사항:\n'),
+      instructions: [basePrompt, customPrompt, reviewRequirement].filter(Boolean).join('\n\n추가 요구사항:\n'),
       input: [`강의 URL: ${course.url}`, `메인 키워드: ${mainKeyword}`, `검증 가능한 공개 강의 데이터:\n${JSON.stringify(compactCourse)}`, auditFeedback].filter(Boolean).join('\n\n'),
       text: { format: { type: 'json_schema', name: 'wordpress_post', strict: true, schema }, verbosity: 'high' },
       store: false

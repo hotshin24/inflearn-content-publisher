@@ -15,7 +15,8 @@ function validContent() {
     sections: [
       { heading: `${keyword} 학습 흐름`, content: fill(`${keyword} `, 650) },
       { heading: '커리큘럼', content: fill(`${keyword} `, 650) },
-      { heading: '학습 대상', content: fill('학습 내용 ', 700) }
+      { heading: '학습 대상', content: fill('학습 내용 ', 700) },
+      { heading: '수강평에서 확인한 반응', content: fill('실제 수강평 요약 ', 500) }
     ],
     conclusion: fill(`${keyword} `, 500),
     core_keywords: [keyword, 'AI 개발', '바이브 코딩', 'MCP', '개발 워크플로우'],
@@ -26,6 +27,16 @@ function validContent() {
 
 test('accepts generated content that meets deterministic SEO rules', () => {
   assert.deepEqual(auditGeneratedContent(validContent(), keyword), []);
+});
+
+test('requires one 450 to 550 character review chapter', () => {
+  const missing = validContent();
+  missing.sections = missing.sections.filter((section) => !section.heading.includes('수강평'));
+  assert.ok(auditGeneratedContent(missing, keyword).includes('수강평을 다루는 H2 챕터가 정확히 1개가 아닙니다.'));
+
+  const short = validContent();
+  short.sections.find((section) => section.heading.includes('수강평')).content = '짧은 수강평 요약';
+  assert.ok(auditGeneratedContent(short, keyword).includes('수강평 챕터가 공백 제외 450~550자가 아닙니다.'));
 });
 
 test('renders structured sections as safe WordPress HTML', () => {
