@@ -26,14 +26,16 @@ app.use(cors({
   }
 }));
 app.use(express.json({ limit: '2mb' }));
-app.get('/preview/config.js', (_req, res) => {
+const serveRuntimeConfig = (_req, res) => {
   res.type('application/javascript').send(`globalThis.APP_CONFIG = Object.freeze(${JSON.stringify({
     apiBaseUrl: config.publicBaseUrl,
     apiAccessToken: config.apiAccessToken
   })});`);
-});
+};
+app.get(['/config.js', '/preview/config.js'], serveRuntimeConfig);
 app.use('/preview', express.static('extension'));
-app.get('/', (_req, res) => res.redirect('/preview/popup.html'));
+app.use(express.static('extension'));
+app.get('/', (_req, res) => res.sendFile('popup.html', { root: 'extension' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/api', rateLimit({
