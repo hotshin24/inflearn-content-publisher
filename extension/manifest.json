@@ -3,7 +3,7 @@
   "name": "Inflearn Content Publisher",
   "version": "0.1.0",
   "description": "인프런 강의의 공개 커리큘럼과 수강평을 수집해 홍보 글 초안을 만듭니다.",
-  "permissions": ["activeTab"],
+  "permissions": ["activeTab", "scripting"],
   "host_permissions": ["https://www.inflearn.com/*", "http://localhost:8787/*"],
   "action": { "default_popup": "popup.html", "default_title": "강의 콘텐츠 만들기" },
   "content_scripts": [{

@@ -12,6 +12,17 @@ async function activeTab() {
   return tab;
 }
 
+async function requestCourse(tabId) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_COURSE' });
+  } catch (error) {
+    if (!/Receiving end does not exist|Could not establish connection/i.test(error.message)) throw error;
+    console.info('[Inflearn Publisher] injecting content script into stale tab');
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+    return chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_COURSE' });
+  }
+}
+
 async function api(path, options = {}) {
   const base = APP_CONFIG.apiBaseUrl.replace(/\/$/, '');
   const headers = { 'Content-Type': 'application/json' };
@@ -27,11 +38,12 @@ $('collect').addEventListener('click', async () => {
     setStatus('페이지에서 공개 정보를 수집하는 중…');
     const tab = await activeTab();
     if (!tab.url?.startsWith('https://www.inflearn.com/course/')) throw new Error('인프런 강의 페이지를 열어주세요.');
-    const result = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_COURSE' });
+    const result = await requestCourse(tab.id);
     if (!result?.ok) throw new Error(result?.error || '수집에 실패했습니다. 페이지를 새로고침해 보세요.');
     course = result.course;
+    if (!course.title) throw new Error('강의 제목을 찾지 못했습니다. 인프런 강의 상세 페이지인지 확인하세요.');
     $('generate').disabled = false;
-    setStatus(`수집 완료: 커리큘럼 ${course.curriculum.length}개 섹션, 수강평 ${course.reviews.length}개`);
+    setStatus(`수집 완료: 커리큘럼 ${course.curriculum.length}개 섹션, 수강평 ${course.reviews.length}개${result.diagnostics?.expanded ? ' · 커리큘럼 펼침' : ''}`);
   } catch (error) { setStatus(error.message, true); }
 });
 

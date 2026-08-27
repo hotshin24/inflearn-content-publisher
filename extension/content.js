@@ -1,3 +1,7 @@
+(() => {
+if (globalThis.__INFLEARN_PUBLISHER_LOADED__) return;
+globalThis.__INFLEARN_PUBLISHER_LOADED__ = true;
+
 const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
 function textOf(selector) {
@@ -65,8 +69,33 @@ function extractCourse() {
   };
 }
 
+async function expandCurriculum() {
+  const expandButton = [...document.querySelectorAll('button')]
+    .find((button) => clean(button.textContent) === '모두 펼치기');
+  if (!expandButton) return false;
+  expandButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  return true;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type !== 'EXTRACT_COURSE') return;
-  try { sendResponse({ ok: true, course: extractCourse() }); }
-  catch (error) { sendResponse({ ok: false, error: error.message }); }
+  (async () => {
+    try {
+      const expanded = await expandCurriculum();
+      const course = extractCourse();
+      console.info('[Inflearn Publisher] extraction complete', {
+        expanded,
+        title: course.title,
+        curriculumSections: course.curriculum.length,
+        reviews: course.reviews.length
+      });
+      sendResponse({ ok: true, course, diagnostics: { expanded } });
+    } catch (error) {
+      console.error('[Inflearn Publisher] extraction failed', error);
+      sendResponse({ ok: false, error: error.message });
+    }
+  })();
+  return true;
 });
+})();
