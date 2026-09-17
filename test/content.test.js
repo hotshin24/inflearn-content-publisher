@@ -39,6 +39,12 @@ test('requires one 450 to 550 character review chapter', () => {
   assert.ok(auditGeneratedContent(short, keyword).includes('수강평 챕터가 공백 제외 450~550자가 아닙니다.'));
 });
 
+test('rejects an SEO title longer than 45 characters', () => {
+  const data = validContent();
+  data.title = `${keyword} ${'긴제목'.repeat(20)}`;
+  assert.ok(auditGeneratedContent(data, keyword).some((error) => error.includes('45자 이하')));
+});
+
 test('renders structured sections as safe WordPress HTML', () => {
   const data = validContent();
   data.sections[0].heading = '<script>alert(1)</script>';

@@ -49,6 +49,7 @@ const articleLengthSchema = {
 };
 
 const compactLength = (value) => String(value || '').replace(/\s/g, '').length;
+const characterLength = (value) => Array.from(String(value || '')).length;
 const isReviewSection = (section) => /(수강평|리뷰|후기)/.test(String(section?.heading || ''));
 const countOccurrences = (text, keyword) => keyword ? String(text).split(keyword).length - 1 : 0;
 const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -62,6 +63,7 @@ export function auditGeneratedContent(data, mainKeyword) {
   if (data.main_keyword !== mainKeyword) errors.push('main_keyword가 사용자 입력과 다릅니다.');
   if (data.focus_keyphrase !== mainKeyword) errors.push('focus_keyphrase가 main_keyword와 다릅니다.');
   if (!data.title?.includes(mainKeyword)) errors.push('제목에 메인 키워드가 없습니다.');
+  if (characterLength(data.title) > 45) errors.push(`제목이 공백 포함 ${characterLength(data.title)}자입니다(45자 이하 필요).`);
   if (!data.introduction?.includes(mainKeyword)) errors.push('서론에 메인 키워드가 없습니다.');
   if (!data.sections?.some((section) => section.heading.includes(mainKeyword))) errors.push('H2 소제목에 메인 키워드가 없습니다.');
   if (!body.includes(mainKeyword)) errors.push('본문에 메인 키워드가 없습니다.');
@@ -150,6 +152,8 @@ async function repairArticleLengths(client, course, mainKeyword, data) {
         '제공된 원문 강의 데이터에서 확인되지 않는 사실을 추가하지 마세요.',
         '기존 H2 제목과 의미, 메인 키워드의 자연스러운 배치를 유지하세요.',
         '수강평·리뷰·후기 중 하나가 제목에 들어간 H2 챕터를 정확히 하나 유지하고, 제공된 실제 수강평의 공통 반응과 서로 다른 관점을 요약하세요.',
+        '모든 content는 2~3문장 단위의 짧은 문단으로 나누고 문단 사이에 빈 줄을 넣으세요.',
+        '한 문장이 공백 제외 90자를 넘지 않게 나누고, 능동형 문장과 자연스러운 연결 표현을 사용하세요.',
         '공백 제외 기준으로 서론 480~520자, 수강평 챕터를 제외한 본론 content 합계 1,900~2,100자, 수강평 챕터 480~520자, 결론 480~520자로 작성하세요.'
       ].join('\n'),
       input: [
@@ -183,12 +187,19 @@ export async function generateContent(course, mainKeyword, customPrompt = '') {
     '수강평에 없는 사실을 만들거나 개별 작성자의 표현을 과장하지 마세요.',
     '이 챕터는 기존 본론 공백 제외 1,800~2,200자와 별도입니다.'
   ].join('\n');
+  const seoReadabilityRequirement = [
+    '제목은 메인 키워드를 포함하고 공백 포함 28~42자를 목표로 하며 절대로 45자를 넘기지 마세요.',
+    '제목에 강의명, 기술, 프로젝트를 나열하지 말고 가장 중요한 검색 의도만 남기세요.',
+    '본문은 2~3문장마다 빈 줄로 문단을 나누고, 한 문장은 공백 제외 90자 이하로 작성하세요.',
+    '가능하면 능동형을 사용하고 문맥에 맞는 연결 표현을 자연스럽게 배치하세요.',
+    '같은 단어로 시작하는 문장이나 문단을 세 번 이상 연속 작성하지 마세요.'
+  ].join('\n');
   let auditFeedback = '';
   let lastErrors = [];
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const response = await client.responses.create({
       model: config.openaiModel,
-      instructions: [basePrompt, customPrompt, reviewRequirement].filter(Boolean).join('\n\n추가 요구사항:\n'),
+      instructions: [basePrompt, customPrompt, reviewRequirement, seoReadabilityRequirement].filter(Boolean).join('\n\n추가 요구사항:\n'),
       input: [`강의 URL: ${course.url}`, `메인 키워드: ${mainKeyword}`, `검증 가능한 공개 강의 데이터:\n${JSON.stringify(compactCourse)}`, auditFeedback].filter(Boolean).join('\n\n'),
       text: { format: { type: 'json_schema', name: 'wordpress_post', strict: true, schema }, verbosity: 'high' },
       store: false
